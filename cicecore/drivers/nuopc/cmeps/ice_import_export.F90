@@ -46,6 +46,9 @@ module ice_import_export
   use shr_mpi_mod        , only : shr_mpi_min, shr_mpi_max
 #endif
 
+  !ufsio
+  use ice_state          , only : vicen, vsnon, aicen
+
   implicit none
   public
 
@@ -294,6 +297,14 @@ contains
        call fldlist_add(fldsFrIce_num, fldsFrIce, 'Si_qref_wiso', &
             ungridded_lbound=1, ungridded_ubound=3)
     end if
+
+    !ufsio
+    call fldlist_add(fldsFrIce_num, fldsFrIce, 'aicen', &
+         ungridded_lbound=1, ungridded_ubound=ncat)
+    call fldlist_add(fldsFrIce_num, fldsFrIce, 'vicen', &
+         ungridded_lbound=1, ungridded_ubound=ncat)
+    call fldlist_add(fldsFrIce_num, fldsFrIce, 'vsnon', &
+         ungridded_lbound=1, ungridded_ubound=ncat)
 
     do n = 1,fldsFrIce_num
        call NUOPC_Advertise(exportState, standardName=fldsFrIce(n)%stdname, &
@@ -1340,6 +1351,27 @@ contains
           ! the export state has been zeroed out at the beginning
           call state_setexport(exportState, 'Fioi_swpen_ifrac_n', input=fswthrun_ai, index=n, &
                lmask=tmask, ifrac=ailohi, ungridded_index=n, areacor=mod2med_areacor, rc=rc)
+          if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       end do
+    end if
+
+
+    ! ufsio
+    if ( State_FldChk(exportState, 'aicen')) then
+       do n = 1,ncat
+          call state_setexport(exportState, 'aicen', input=aicen, index=n, ungridded_index=n, rc=rc)
+          if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       end do
+    end if
+    if ( State_FldChk(exportState, 'vicen')) then
+       do n = 1,ncat
+          call state_setexport(exportState, 'vicen', input=vicen, index=n, ungridded_index=n, rc=rc)
+          if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       end do
+    end if
+    if ( State_FldChk(exportState, 'vsnon')) then
+       do n = 1,ncat
+          call state_setexport(exportState, 'vsnon', input=vsnon, index=n, ungridded_index=n, rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
        end do
     end if
