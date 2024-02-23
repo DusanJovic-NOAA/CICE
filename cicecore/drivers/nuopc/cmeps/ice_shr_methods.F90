@@ -320,6 +320,7 @@ contains
     character(ESMF_MAXSTR), allocatable :: lfieldnamelist(:)
     real(R8), pointer                   :: fldptr1(:)
     real(R8), pointer                   :: fldptr2(:,:)
+    real(R8), pointer                   :: fldptr3(:,:,:)
     real(R8), parameter                 :: czero = 0.0_R8
     character(len=*),parameter          :: subname='(state_reset)'
     ! ----------------------------------------------
@@ -336,7 +337,7 @@ contains
        call ESMF_StateGet(State, itemName=trim(lfieldnamelist(n)), field=lfield, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-       call field_getfldptr(lfield, fldptr1=fldptr1, fldptr2=fldptr2, rank=lrank, rc=rc)
+       call field_getfldptr(lfield, fldptr1=fldptr1, fldptr2=fldptr2, fldptr3=fldptr3, rank=lrank, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
        if (lrank == 0) then
@@ -345,6 +346,8 @@ contains
           fldptr1 = reset_value
        elseif (lrank == 2) then
           fldptr2 = reset_value
+       elseif (lrank == 3) then
+          fldptr3 = reset_value
        else
           call ESMF_LogWrite(trim(subname)//": ERROR in rank "//trim(lfieldnamelist(n)), ESMF_LOGMSG_ERROR)
           rc = ESMF_FAILURE
@@ -520,7 +523,7 @@ contains
 
 !===============================================================================
 
-  subroutine field_getfldptr(field, fldptr1, fldptr2, rank, abort, rc)
+  subroutine field_getfldptr(field, fldptr1, fldptr2, fldptr3, rank, abort, rc)
 
     ! ----------------------------------------------
     ! for a field, determine rank and return fldptr1 or fldptr2
@@ -532,6 +535,7 @@ contains
     type(ESMF_Field)  , intent(in)              :: field
     real(r8), pointer , intent(inout), optional :: fldptr1(:)
     real(r8), pointer , intent(inout), optional :: fldptr2(:,:)
+    real(r8), pointer , intent(inout), optional :: fldptr3(:,:,:)
     integer           , intent(out)  , optional :: rank
     logical           , intent(in)   , optional :: abort
     integer           , intent(out)  , optional :: rc
@@ -615,6 +619,15 @@ contains
              return
           endif
           call ESMF_FieldGet(field, farrayPtr=fldptr2, rc=rc)
+          if (chkerr(rc,__LINE__,u_FILE_u)) return
+       elseif (lrank == 3) then
+          if (.not.present(fldptr3)) then
+             call ESMF_LogWrite(trim(subname)//": ERROR missing rank=3 array ", &
+                  ESMF_LOGMSG_ERROR, line=__LINE__, file=u_FILE_u)
+             rc = ESMF_FAILURE
+             return
+          endif
+          call ESMF_FieldGet(field, farrayPtr=fldptr3, rc=rc)
           if (chkerr(rc,__LINE__,u_FILE_u)) return
        else
           call ESMF_LogWrite(trim(subname)//": ERROR in rank ", &

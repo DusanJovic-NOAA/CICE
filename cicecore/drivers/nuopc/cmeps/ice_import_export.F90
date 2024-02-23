@@ -48,6 +48,7 @@ module ice_import_export
 
   !ufsio
   use ice_state          , only : vicen, vsnon, aicen
+  use ice_state          , only : uvel, vvel
 
   implicit none
   public
@@ -60,10 +61,12 @@ module ice_import_export
   private :: fldlist_add
   private :: fldlist_realize
   private :: state_FldChk
+  private :: create_native_grid
 
   interface state_getfldptr
      module procedure state_getfldptr_1d
      module procedure state_getfldptr_2d
+     module procedure state_getfldptr_3d
   end interface state_getfldptr
   private :: state_getfldptr
 
@@ -78,6 +81,12 @@ module ice_import_export
      module procedure state_setexport_3d
   end interface state_setexport
   private :: state_setexport
+
+  interface state_setexport_grid
+     module procedure state_setexport_grid_4d
+     module procedure state_setexport_grid_3d
+  end interface state_setexport_grid
+  private :: state_setexport_grid
 
   ! Private module data
 
@@ -94,8 +103,10 @@ module ice_import_export
   integer, parameter       :: fldsMax = 100
   integer                  :: fldsToIce_num = 0
   integer                  :: fldsFrIce_num = 0
+  integer                  :: fldsFrIce_grid_num = 0
   type (fld_list_type)     :: fldsToIce(fldsMax)
   type (fld_list_type)     :: fldsFrIce(fldsMax)
+  type (fld_list_type)     :: fldsFrIce_grid(fldsMax)
 
   integer     , parameter  :: io_dbug = 10        ! i/o debug messages
   character(*), parameter  :: u_FILE_u = &
@@ -299,15 +310,24 @@ contains
     end if
 
     !ufsio
-    call fldlist_add(fldsFrIce_num, fldsFrIce, 'aicen', &
+    call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'uvel')
+    call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'vvel')
+
+    call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'aicen', &
          ungridded_lbound=1, ungridded_ubound=ncat)
-    call fldlist_add(fldsFrIce_num, fldsFrIce, 'vicen', &
+    call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'vicen', &
          ungridded_lbound=1, ungridded_ubound=ncat)
-    call fldlist_add(fldsFrIce_num, fldsFrIce, 'vsnon', &
+    call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'vsnon', &
          ungridded_lbound=1, ungridded_ubound=ncat)
 
     do n = 1,fldsFrIce_num
        call NUOPC_Advertise(exportState, standardName=fldsFrIce(n)%stdname, &
+            TransferOfferGeomObject='will provide', rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    enddo
+
+    do n = 1,fldsFrIce_grid_num
+       call NUOPC_Advertise(exportState, standardName=fldsFrIce_grid(n)%stdname, &
             TransferOfferGeomObject='will provide', rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
     enddo
@@ -347,9 +367,13 @@ contains
     real(dbl_kind)              :: min_mod2med_areacor_glob
     real(dbl_kind)              :: min_med2mod_areacor_glob
     character(len=*), parameter :: subname='(ice_import_export:realize_fields)'
+
+    type(ESMF_Grid)             :: grid
     !---------------------------------------------------------------------------
 
     rc = ESMF_SUCCESS
+
+    call create_native_grid(grid, rc)
 
     call NUOPC_ModelGet(gcomp, importState=importState, exportState=exportState, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -363,6 +387,17 @@ contains
          tag=subname//':CICE_Export',&
          mesh=mesh, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    call fldlist_realize( &
+         state=ExportState, &
+         fldList=fldsFrIce_grid, &
+         numflds=fldsFrIce_grid_num, &
+         flds_scalar_name=flds_scalar_name, &
+         flds_scalar_num=flds_scalar_num, &
+         tag=subname//':CICE_Export',&
+         grid=grid, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
 
     call fldlist_realize( &
          state=importState, &
@@ -1357,21 +1392,29 @@ contains
 
 
     ! ufsio
+    if ( State_FldChk(exportState, 'uvel')) then
+       call state_setexport_grid(exportState, 'uvel', input=uvel, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
+    if ( State_FldChk(exportState, 'vvel')) then
+       call state_setexport_grid(exportState, 'vvel', input=vvel, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
     if ( State_FldChk(exportState, 'aicen')) then
        do n = 1,ncat
-          call state_setexport(exportState, 'aicen', input=aicen, index=n, ungridded_index=n, rc=rc)
+          call state_setexport_grid(exportState, 'aicen', input=aicen, index=n, ungridded_index=n, rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
        end do
     end if
     if ( State_FldChk(exportState, 'vicen')) then
        do n = 1,ncat
-          call state_setexport(exportState, 'vicen', input=vicen, index=n, ungridded_index=n, rc=rc)
+          call state_setexport_grid(exportState, 'vicen', input=vicen, index=n, ungridded_index=n, rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
        end do
     end if
     if ( State_FldChk(exportState, 'vsnon')) then
        do n = 1,ncat
-          call state_setexport(exportState, 'vsnon', input=vsnon, index=n, ungridded_index=n, rc=rc)
+          call state_setexport_grid(exportState, 'vsnon', input=vsnon, index=n, ungridded_index=n, rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
        end do
     end if
@@ -1472,12 +1515,21 @@ contains
                      ESMF_LOGMSG_INFO)
                 if (fldlist(n)%ungridded_lbound > 0 .and. fldlist(n)%ungridded_ubound > 0) then
                    field = ESMF_FieldCreate(grid, ESMF_TYPEKIND_R8, name=stdname, indexflag=ESMF_INDEX_DELOCAL, &
-                        ungriddedLBound=(/1,1/), ungriddedUBound=(/max_blocks,fldlist(n)%ungridded_ubound/), rc=rc)
+                        ungriddedLBound=(/fldlist(n)%ungridded_lbound/), &
+                        ungriddedUBound=(/fldlist(n)%ungridded_ubound/), &
+                        rc=rc)
                    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+                   write(msg, '(a,i4,2x,i4)') trim(subname)//trim(tag)//" Field = "//trim(stdname)//&
+                        " is connected using grid with lbound, ubound = ",&
+                        fldlist(n)%ungridded_lbound,fldlist(n)%ungridded_ubound
+                   call ESMF_LogWrite(msg, ESMF_LOGMSG_INFO)
                 else
                    field = ESMF_FieldCreate(grid, ESMF_TYPEKIND_R8, name=stdname, indexflag=ESMF_INDEX_DELOCAL, &
-                        ungriddedLBound=(/1/), ungriddedUBound=(/max_blocks/), rc=rc)
+                        rc=rc)
                    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+                   write(msg, '(a,i4,a,i4)') trim(subname)//trim(tag)//" Field = "//trim(stdname)//&
+                        " is connected using grid without ungridded dimension"
+                   call ESMF_LogWrite(msg, ESMF_LOGMSG_INFO)
                 end if
              else
                 call ESMF_LogWrite(subname // 'input must be grid or mesh', ESMF_LOGMSG_INFO)
@@ -1896,6 +1948,223 @@ contains
   end subroutine state_setexport_3d
 
   !===============================================================================
+  subroutine state_setexport_grid_4d(state, fldname, input, index, lmask, ifrac, ungridded_index, areacor, rc)
+
+    ! ----------------------------------------------
+    ! Map 4d input array to export state field
+    ! ----------------------------------------------
+
+    ! input/output variables
+    type(ESMF_State)    ,           intent(inout) :: state
+    character(len=*)    ,           intent(in)    :: fldname
+    real(kind=dbl_kind) ,           intent(in)    :: input(:,:,:,:)
+    integer             ,           intent(in)    :: index
+    logical             , optional, intent(in)    :: lmask(:,:,:)
+    real(kind=dbl_kind) , optional, intent(in)    :: ifrac(:,:,:)
+    integer             , optional, intent(in)    :: ungridded_index
+    real(kind=dbl_kind) , optional, intent(in)    :: areacor(:)
+    integer             ,           intent(out)   :: rc
+
+    ! local variables
+    type(block)                  :: this_block            ! block information for current block
+    integer                      :: ilo, ihi, jlo, jhi    ! beginning and end of physical domain
+    integer                      :: i, j, iblk, n, i1, j1 ! indices
+    real(kind=dbl_kind), pointer :: dataPtr1d(:)          ! mesh
+    real(kind=dbl_kind), pointer :: dataPtr2d(:,:)        ! mesh
+    real(kind=dbl_kind), pointer :: dataPtr3d(:,:,:)      ! mesh
+    integer                      :: ice_num
+    integer,allocatable          :: lbnd(:),ubnd(:)
+    character(len=*), parameter  :: subname='(ice_import_export:state_setexport_grid_4d)'
+    ! ----------------------------------------------
+
+    rc = ESMF_SUCCESS
+
+    ! check that fieldname exists
+    if (.not. State_FldChk(state, trim(fldname))) return
+
+    ! get field pointer
+    if (present(ungridded_index)) then
+       call state_getfldptr(state, trim(fldname), dataPtr3d, rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       if (ungridded_index == 1) then
+          dataPtr3d(:,:,:) = c0
+       end if
+
+       lbnd = lbound(dataPtr3d)
+       ubnd = ubound(dataPtr3d)
+
+       do iblk = 1, nblocks
+          this_block = get_block(blocks_ice(iblk),iblk)
+          ilo = this_block%ilo; ihi = this_block%ihi
+          jlo = this_block%jlo; jhi = this_block%jhi
+          if (present(lmask) .and. present(ifrac)) then
+             do j1 = lbnd(2),ubnd(2)
+                do i1 = lbnd(1),ubnd(1)
+                   i = i1 + ilo - lbnd(1)
+                   j = j1 + jlo - lbnd(2)
+                   if ( lmask(i,j,iblk) .and. ifrac(i,j,iblk) > c0 ) then
+                      dataPtr3d(i1,j1,ungridded_index) = input(i,j,index,iblk)
+                   else
+                      dataPtr3d(i1,j1,ungridded_index) = c0
+                   end if
+                end do
+             end do
+          else
+             do j1 = lbnd(2),ubnd(2)
+                do i1 = lbnd(1),ubnd(1)
+                   i = i1 + ilo - lbnd(1)
+                   j = j1 + jlo - lbnd(2)
+                   dataPtr3d(i1,j1,ungridded_index) = input(i,j,index,iblk)
+                end do
+             end do
+          end if
+          if (present(areacor)) then
+             n = 0
+             do j1 = lbnd(2),ubnd(2)
+                do i1 = lbnd(1),ubnd(1)
+                   n = n+1
+                   dataPtr3d(i1,j1,ungridded_index) = dataPtr3d(i1,j1,index) * areacor(n)
+                end do
+             end do
+          end if
+       end do
+    else
+       call state_getfldptr(state, trim(fldname), dataPtr2d, rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       dataPtr2d(:,:) = c0
+
+       lbnd = lbound(dataPtr2d)
+       ubnd = ubound(dataPtr2d)
+
+       do iblk = 1, nblocks
+          this_block = get_block(blocks_ice(iblk),iblk)
+          ilo = this_block%ilo; ihi = this_block%ihi
+          jlo = this_block%jlo; jhi = this_block%jhi
+          if (present(lmask) .and. present(ifrac)) then
+             do j1 = lbnd(2),ubnd(2)
+                do i1 = lbnd(1),ubnd(1)
+                   i = i1 + ilo - lbnd(1)
+                   j = j1 + jlo - lbnd(2)
+                   if ( lmask(i,j,iblk) .and. ifrac(i,j,iblk) > c0 ) then
+                      dataPtr2d(i1,j1) = input(i,j,index,iblk)
+                   end if
+                end do
+             end do
+          else
+             ! is J loop missing here FIXME
+             ! do i = ilo, ihi
+             !    n = n+1
+             !    dataPtr1d(n) = input(i,j,index,iblk)
+             ! end do
+          end if
+       end do
+       ! ice_num = n
+       ! if (present(areacor)) then
+       !    do n = 1,ice_num
+       !       dataPtr1d(n) = dataPtr1d(n) * areacor(n)
+       !    end do
+       ! end if
+    end if
+
+  end subroutine state_setexport_grid_4d
+
+  !===============================================================================
+  subroutine state_setexport_grid_3d(state, fldname, input, lmask, ifrac, ungridded_index, areacor, rc)
+
+    ! ----------------------------------------------
+    ! Map 3d input array to export state field
+    ! ----------------------------------------------
+
+    ! input/output variables
+    type(ESMF_State)               , intent(inout) :: state
+    character(len=*)               , intent(in)    :: fldname
+    real(kind=dbl_kind)            , intent(in)    :: input(:,:,:)
+    logical             , optional , intent(in)    :: lmask(:,:,:)
+    real(kind=dbl_kind) , optional , intent(in)    :: ifrac(:,:,:)
+    integer             , optional , intent(in)    :: ungridded_index
+    real(kind=dbl_kind) , optional , intent(in)    :: areacor(:)
+    integer                        , intent(out)   :: rc
+
+    ! local variables
+    type(block)                  :: this_block            ! block information for current block
+    integer                      :: ilo, ihi, jlo, jhi    ! beginning and end of physical domain
+    integer                      :: i, j, iblk, n, i1, j1 ! incides
+    real(kind=dbl_kind), pointer :: dataPtr1d(:)          ! mesh
+    real(kind=dbl_kind), pointer :: dataPtr2d(:,:)        ! mesh
+    real(kind=dbl_kind), pointer :: dataPtr3d(:,:,:)      ! mesh
+    integer                      :: num_ice
+    integer,allocatable          :: lbnd(:),ubnd(:)
+    character(len=*), parameter  :: subname='(ice_import_export:state_setexport_grid_3d)'
+    ! ----------------------------------------------
+
+    rc = ESMF_SUCCESS
+
+    ! check that fieldname exists
+    if (.not. State_FldChk(state, trim(fldname))) return
+
+    ! get field pointer
+    if (present(ungridded_index)) then
+       call state_getfldptr(state, trim(fldname), dataPtr3d, rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       lbnd = lbound(dataPtr3d)
+       ubnd = ubound(dataPtr3d)
+    else
+       call state_getfldptr(state, trim(fldname), dataPtr2d, rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       lbnd = lbound(dataPtr2d)
+       ubnd = ubound(dataPtr2d)
+    end if
+
+    do iblk = 1, nblocks
+       this_block = get_block(blocks_ice(iblk),iblk)
+       ilo = this_block%ilo
+       ihi = this_block%ihi
+       jlo = this_block%jlo
+       jhi = this_block%jhi
+       do j1 = lbnd(2),ubnd(2)
+          do i1 = lbnd(1),ubnd(1)
+             i = i1 + ilo - lbnd(1)
+             j = j1 + jlo - lbnd(2)
+             if (present(lmask) .and. present(ifrac)) then
+                if ( lmask(i,j,iblk) .and. ifrac(i,j,iblk) > c0 ) then
+                   if (present(ungridded_index)) then
+                      dataPtr3d(i1,j1,ungridded_index) = input(i,j,iblk)
+                   else
+                      dataPtr2d(1,j1) = input(i,j,iblk)
+                   end if
+                end if
+             else
+                if (present(ungridded_index)) then
+                   dataPtr3d(i1,j1,ungridded_index) = input(i,j,iblk)
+                else
+                   dataPtr2d(i1,j1) = input(i,j,iblk)
+                end if
+             end if
+          end do
+       end do
+    end do
+    if (present(areacor)) then
+       n = 0
+       if (present(ungridded_index)) then
+          do j1 = lbnd(2),ubnd(2)
+             do i1 = lbnd(1),ubnd(1)
+                n = n+1
+                dataPtr3d(i1,j1,:) = dataPtr3d(i1,j1,:) * areacor(n)
+             end do
+          end do
+       else
+          do j1 = lbnd(2),ubnd(2)
+             do i1 = lbnd(1),ubnd(1)
+                n = n+1
+                dataPtr2d(i1,j1) = dataPtr2d(i1,j1) * areacor(n)
+             end do
+          end do
+       end if
+    end if
+
+  end subroutine state_setexport_grid_3d
+
+  !===============================================================================
   subroutine State_GetFldPtr_1d(State, fldname, fldptr, rc)
     ! ----------------------------------------------
     ! Get pointer to a state field
@@ -1948,5 +2217,308 @@ contains
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
   end subroutine State_GetFldPtr_2d
+
+  !===============================================================================
+  subroutine State_GetFldPtr_3d(State, fldname, fldptr, rc)
+    ! ----------------------------------------------
+    ! Get pointer to a state field
+    ! ----------------------------------------------
+
+    ! input/output variables
+    type(ESMF_State)    ,            intent(in)     :: State
+    character(len=*)    ,            intent(in)     :: fldname
+    real(kind=dbl_kind) , pointer ,  intent(inout)  :: fldptr(:,:,:)
+    integer             , optional , intent(out)    :: rc
+
+    ! local variables
+    type(ESMF_Field) :: lfield
+    character(len=*),parameter :: subname='(ice_import_export:State_GetFldPtr_3d)'
+    ! ----------------------------------------------
+
+    rc = ESMF_SUCCESS
+
+    call ESMF_StateGet(State, itemName=trim(fldname), field=lfield, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    call ESMF_FieldGet(lfield, farrayPtr=fldptr, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+  end subroutine State_GetFldPtr_3d
+
+  !===============================================================================
+  subroutine create_native_grid(grid, rc)
+    ! ----------------------------------------------
+    ! Create native grid
+    ! ----------------------------------------------
+
+    use ice_blocks, only: nx_block, ny_block, nblocks_tot, block, get_block, &
+                          get_block_parameter
+    use ice_domain_size, only: max_blocks, nx_global, ny_global
+    use ice_domain, only: nblocks, blocks_ice, distrb_info
+    use ice_distribution, only: ice_distributiongetblockloc
+    use icepack_parameters, only: rad_to_deg
+    use ice_grid, only: TLAT, TLON, ULAT, ULON, hm, tarea
+
+    ! input/output variables
+    type(ESMF_Grid)     ,            intent(out)    :: grid
+    integer             , optional , intent(out)    :: rc
+
+    ! local variables
+    type(ESMF_DistGrid)                    :: distgrid
+    type(ESMF_DistGridConnection), allocatable :: connectionList(:)
+    integer                                :: npet
+    integer                                :: i,j,iblk, n, i1,j1, DE
+    integer                                :: ilo,ihi,jlo,jhi
+    integer                                :: ig,jg,cnt
+    integer                                :: peID,locID
+    integer, pointer                       :: indexList(:)
+    integer, pointer                       :: deLabelList(:)
+    integer, pointer                       :: deBlockList(:,:,:)
+    integer, pointer                       :: petMap(:)
+    integer, pointer                       :: i_glob(:),j_glob(:)
+    integer                                :: lbnd(2),ubnd(2)
+    type(block)                            :: this_block
+    type(ESMF_DELayout)                    :: delayout
+    real(ESMF_KIND_R8), pointer            :: tarray(:,:)
+    real(ESMF_KIND_R8), pointer :: coordXcenter(:,:)
+    real(ESMF_KIND_R8), pointer :: coordYcenter(:,:)
+    real(ESMF_KIND_R8), pointer :: coordXcorner(:,:)
+    real(ESMF_KIND_R8), pointer :: coordYcorner(:,:)
+    integer(ESMF_KIND_I4), pointer :: gridmask(:,:)
+    real(ESMF_KIND_R8), pointer :: gridarea(:,:)
+
+    character(len=256) :: tmpstr
+    integer :: dbrc     ! temporary debug rc value
+    logical :: grid_attach_area = .false. ! FIXME
+
+    character(len=*),parameter :: subname='(ice_import_export:create_native_grid)'
+    ! ----------------------------------------------
+
+    rc = ESMF_SUCCESS
+
+    ! create a Grid object for Fields
+    ! we are going to create a single tile displaced pole grid from a gridspec
+    ! file. We also use the exact decomposition in CICE so that the Fields
+    ! created can wrap on the data pointers in internal part of CICE
+
+    write(tmpstr,'(a,2i8)') trim(subname)//' ice nx,ny = ',nx_global,ny_global
+    call ESMF_LogWrite(trim(tmpstr), ESMF_LOGMSG_INFO, rc=dbrc)
+
+    allocate(deBlockList(2,2,nblocks_tot))
+    allocate(petMap(nblocks_tot))
+    allocate(deLabelList(nblocks_tot))
+
+    write(tmpstr,'(a,1i8)') trim(subname)//' nblocks = ',nblocks_tot
+    call ESMF_LogWrite(trim(tmpstr), ESMF_LOGMSG_INFO, rc=dbrc)
+    do n = 1, nblocks_tot
+       deLabelList(n) = n
+       call get_block_parameter(n,ilo=ilo,ihi=ihi,jlo=jlo,jhi=jhi, &
+          i_glob=i_glob,j_glob=j_glob)
+       deBlockList(1,1,n) = i_glob(ilo)
+       deBlockList(1,2,n) = i_glob(ihi)
+       deBlockList(2,1,n) = j_glob(jlo)
+       deBlockList(2,2,n) = j_glob(jhi)
+       call ice_distributionGetBlockLoc(distrb_info,n,peID,locID)
+       petMap(n) = peID - 1
+       write(tmpstr,'(a,2i8)') trim(subname)//' IDs  = ',n,peID
+       call ESMF_LogWrite(trim(tmpstr), ESMF_LOGMSG_INFO, rc=dbrc)
+       write(tmpstr,'(a,3i8)') trim(subname)//' iglo = ',n,deBlockList(1,1,n),deBlockList(1,2,n)
+       call ESMF_LogWrite(trim(tmpstr), ESMF_LOGMSG_INFO, rc=dbrc)
+       write(tmpstr,'(a,3i8)') trim(subname)//' jglo = ',n,deBlockList(2,1,n),deBlockList(2,2,n)
+       call ESMF_LogWrite(trim(tmpstr), ESMF_LOGMSG_INFO, rc=dbrc)
+
+       write(tmpstr,'(a,3i8)') trim(subname)//' petMap = ',n,petMap(n),nblocks_tot
+       call ESMF_LogWrite(trim(tmpstr), ESMF_LOGMSG_INFO, rc=dbrc)
+    enddo
+
+    delayout = ESMF_DELayoutCreate(petMap, rc=rc)
+    if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=__FILE__)) return
+
+    allocate(connectionList(2))
+    ! bipolar boundary condition at top row: nyg
+    call ESMF_DistGridConnectionSet(connectionList(1), tileIndexA=1, &
+      tileIndexB=1, positionVector=(/nx_global+1, 2*ny_global+1/), &
+      orientationVector=(/-1, -2/), rc=rc)
+    if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, &
+      line=__LINE__, &
+      file=__FILE__)) &
+      return  ! bail out
+    ! periodic boundary condition along first dimension
+    call ESMF_DistGridConnectionSet(connectionList(2), tileIndexA=1, &
+      tileIndexB=1, positionVector=(/nx_global, 0/), rc=rc)
+    if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, &
+      line=__LINE__, &
+      file=__FILE__)) &
+      return  ! bail out
+
+    distgrid = ESMF_DistGridCreate(minIndex=(/1,1/), maxIndex=(/nx_global,ny_global/), &
+        deBlockList=deBlockList, &
+        delayout=delayout, &
+        connectionList=connectionList, &
+        rc=rc)
+    if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=__FILE__)) return
+
+    deallocate(deLabelList)
+    deallocate(deBlockList)
+    deallocate(petMap)
+    deallocate(connectionList)
+
+    call ESMF_DistGridGet(distgrid=distgrid, localDE=0, elementCount=cnt, rc=rc)
+    if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=__FILE__)) return
+    allocate(indexList(cnt))
+    write(tmpstr,'(a,i8)') trim(subname)//' distgrid cnt= ',cnt
+    call ESMF_LogWrite(trim(tmpstr), ESMF_LOGMSG_INFO, rc=dbrc)
+    call ESMF_DistGridGet(distgrid=distgrid, localDE=0, seqIndexList=indexList, rc=rc)
+    if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=__FILE__)) return
+    write(tmpstr,'(a,4i8)') trim(subname)//' distgrid list= ',indexList(1),indexList(cnt),minval(indexList), maxval(indexList)
+    call ESMF_LogWrite(trim(tmpstr), ESMF_LOGMSG_INFO, rc=dbrc)
+    deallocate(IndexList)
+
+    grid = ESMF_GridCreate(distgrid=distgrid, &
+       coordSys = ESMF_COORDSYS_SPH_DEG, &
+       gridEdgeLWidth=(/0,0/), gridEdgeUWidth=(/0,1/), &
+       rc = rc)
+    if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=__FILE__)) return
+
+    call ESMF_GridAddCoord(grid, staggerLoc=ESMF_STAGGERLOC_CENTER, rc=rc) 
+    if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=__FILE__)) return
+    call ESMF_GridAddCoord(grid, staggerLoc=ESMF_STAGGERLOC_CORNER, rc=rc) 
+    if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=__FILE__)) return
+    call ESMF_GridAddItem(grid, itemFlag=ESMF_GRIDITEM_MASK, itemTypeKind=ESMF_TYPEKIND_I4, &
+       staggerLoc=ESMF_STAGGERLOC_CENTER, rc=rc)
+    if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=__FILE__)) return
+
+    ! Attach area to the Grid optionally. By default the cell areas are computed.
+    if(grid_attach_area) then
+      call ESMF_GridAddItem(grid, itemFlag=ESMF_GRIDITEM_AREA, itemTypeKind=ESMF_TYPEKIND_R8, &
+         staggerLoc=ESMF_STAGGERLOC_CENTER, rc=rc)
+      if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, &
+        line=__LINE__, &
+        file=__FILE__)) &
+        return  ! bail out
+    endif
+
+    do iblk = 1,nblocks
+       DE = iblk-1
+       this_block = get_block(blocks_ice(iblk),iblk)
+       ilo = this_block%ilo
+       ihi = this_block%ihi
+       jlo = this_block%jlo
+       jhi = this_block%jhi
+
+       call ESMF_GridGetCoord(grid, coordDim=1, localDE=DE, &
+           staggerloc=ESMF_STAGGERLOC_CENTER, &
+           computationalLBound=lbnd, computationalUBound=ubnd, &
+           farrayPtr=coordXcenter, rc=rc)
+       if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=__FILE__)) return
+       call ESMF_GridGetCoord(grid, coordDim=2, localDE=DE, &
+           staggerloc=ESMF_STAGGERLOC_CENTER, &
+           farrayPtr=coordYcenter, rc=rc)
+       if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=__FILE__)) return
+
+       write(tmpstr,'(a,5i8)') trim(subname)//' iblk center bnds ',iblk,lbnd,ubnd
+       call ESMF_LogWrite(trim(tmpstr), ESMF_LOGMSG_INFO, rc=dbrc)
+       if (lbnd(1) /= 1 .or. lbnd(2) /= 1 .or. ubnd(1) /= ihi-ilo+1 .or. ubnd(2) /= jhi-jlo+1) then
+          write(tmpstr,'(a,5i8)') trim(subname)//' iblk bnds ERROR '
+          call ESMF_LogWrite(trim(tmpstr), ESMF_LOGMSG_INFO, line=__LINE__, file=__FILE__, rc=dbrc)
+          rc = ESMF_FAILURE
+          return
+       endif
+
+       call ESMF_GridGetItem(grid, itemflag=ESMF_GRIDITEM_MASK, localDE=DE, &
+           staggerloc=ESMF_STAGGERLOC_CENTER, &
+           farrayPtr=gridmask, rc=rc)
+       if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=__FILE__)) return
+
+      if(grid_attach_area) then
+       call ESMF_GridGetItem(grid, itemflag=ESMF_GRIDITEM_AREA, localDE=DE, &
+            staggerloc=ESMF_STAGGERLOC_CENTER, &
+            farrayPtr=gridarea, rc=rc)
+       if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=__FILE__)) return
+       do j1 = lbnd(2),ubnd(2)
+       do i1 = lbnd(1),ubnd(1)
+          i = i1 + ilo - lbnd(1)
+          j = j1 + jlo - lbnd(2)
+          gridarea(i1,j1) = tarea(i,j,iblk)
+       enddo
+       enddo
+       write(tmpstr,'(a,5i8)') trim(subname)//' setting ESMF_GRIDITEM_AREA using tarea '
+       call ESMF_LogWrite(trim(tmpstr), ESMF_LOGMSG_INFO, line=__LINE__, file=__FILE__, rc=dbrc)
+      endif
+
+       do j1 = lbnd(2),ubnd(2)
+       do i1 = lbnd(1),ubnd(1)
+          i = i1 + ilo - lbnd(1)
+          j = j1 + jlo - lbnd(2)
+          coordXcenter(i1,j1) = TLON(i,j,iblk) * rad_to_deg
+          coordYcenter(i1,j1) = TLAT(i,j,iblk) * rad_to_deg
+          gridmask(i1,j1) = nint(hm(i,j,iblk))
+       enddo
+       enddo
+
+       call ESMF_GridGetCoord(grid, coordDim=1, localDE=DE, &
+           staggerloc=ESMF_STAGGERLOC_CORNER, &
+           computationalLBound=lbnd, computationalUBound=ubnd, &
+           farrayPtr=coordXcorner, rc=rc)
+       if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=__FILE__)) return
+       call ESMF_GridGetCoord(grid, coordDim=2, localDE=DE, &
+           staggerloc=ESMF_STAGGERLOC_CORNER, &
+           farrayPtr=coordYcorner, rc=rc)
+       if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, line=__LINE__, file=__FILE__)) return
+
+       write(tmpstr,'(a,5i8)') trim(subname)//' iblk corner bnds ',iblk,lbnd,ubnd
+       call ESMF_LogWrite(trim(tmpstr), ESMF_LOGMSG_INFO, rc=dbrc)
+
+       ! ULON and ULAT are upper right hand corner from TLON and TLAT
+       ! corners in ESMF need to be defined lon lower left corner from center
+       ! ULON and ULAT have ghost cells, leverage that to fill corner arrays
+       do j1 = lbnd(2),ubnd(2)
+       do i1 = lbnd(1),ubnd(1)
+          i = i1 + ilo - lbnd(1)
+          j = j1 + jlo - lbnd(2)
+          coordXcorner(i1,j1) = ULON(i-1,j-1,iblk) * rad_to_deg
+          coordYcorner(i1,j1) = ULAT(i-1,j-1,iblk) * rad_to_deg
+       enddo
+       enddo
+
+    enddo
+
+    call ESMF_GridGetCoord(grid, coordDim=1, localDE=0,  &
+       staggerLoc=ESMF_STAGGERLOC_CENTER, farrayPtr=tarray, rc=rc)
+    if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, &
+      line=__LINE__, &
+      file=__FILE__)) &
+      return  ! bail out
+    write(tmpstr,'(a,2g15.7)') trim(subname)//' grid center1 = ',minval(tarray),maxval(tarray)
+    call ESMF_LogWrite(trim(tmpstr), ESMF_LOGMSG_INFO, rc=dbrc)
+
+    call ESMF_GridGetCoord(grid, coordDim=2, localDE=0,  &
+       staggerLoc=ESMF_STAGGERLOC_CENTER, farrayPtr=tarray, rc=rc)
+    if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, &
+      line=__LINE__, &
+      file=__FILE__)) &
+      return  ! bail out
+    write(tmpstr,'(a,2g15.7)') trim(subname)//' grid center2 = ',minval(tarray),maxval(tarray)
+    call ESMF_LogWrite(trim(tmpstr), ESMF_LOGMSG_INFO, rc=dbrc)
+
+    call ESMF_GridGetCoord(grid, coordDim=1, localDE=0,  &
+       staggerLoc=ESMF_STAGGERLOC_CORNER, farrayPtr=tarray, rc=rc)
+    if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, &
+      line=__LINE__, &
+      file=__FILE__)) &
+      return  ! bail out
+    write(tmpstr,'(a,2g15.7)') trim(subname)//' grid corner1 = ',minval(tarray),maxval(tarray)
+    call ESMF_LogWrite(trim(tmpstr), ESMF_LOGMSG_INFO, rc=dbrc)
+
+    call ESMF_GridGetCoord(grid, coordDim=2, localDE=0,  &
+       staggerLoc=ESMF_STAGGERLOC_CORNER, farrayPtr=tarray, rc=rc)
+    if (ESMF_LogFoundError(rcToCheck=rc, msg=ESMF_LOGERR_PASSTHRU, &
+      line=__LINE__, &
+      file=__FILE__)) &
+      return  ! bail out
+    write(tmpstr,'(a,2g15.7)') trim(subname)//' grid corner2 = ',minval(tarray),maxval(tarray)
+    call ESMF_LogWrite(trim(tmpstr), ESMF_LOGMSG_INFO, rc=dbrc)
+
+  end subroutine create_native_grid
 
 end module ice_import_export
