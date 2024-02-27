@@ -47,6 +47,13 @@ module ice_import_export
 #endif
 
   !ufsio
+  use ice_domain_size    , only : nilyr, nslyr
+  use ice_dyn_shared     , only : iceUmask, kdyn
+  use ice_flux           , only : coszen, scale_factor
+  use ice_flux           , only : stressp_1, stressp_2, stressp_3, stressp_4, &
+                                  stressm_1, stressm_2, stressm_3, stressm_4, &
+                                  stress12_1, stress12_2, stress12_3, stress12_4
+  use ice_arrays_column  , only : dhsn, ffracn
   use ice_state          , only : vicen, vsnon, aicen
   use ice_state          , only : uvel, vvel
 
@@ -126,12 +133,13 @@ contains
     integer          , intent(out) :: rc
 
     ! local variables
-    integer             :: n
+    integer             :: n, k
     character(char_len) :: stdname
     character(char_len) :: cvalue
     logical             :: flds_wiso         ! use case
     logical             :: flds_wave         ! use case
     logical             :: isPresent, isSet
+    character (len=3)   :: nchar
     character(len=*), parameter :: subname='(ice_import_export:ice_advertise_fields)'
     !-------------------------------------------------------------------------------
 
@@ -312,13 +320,66 @@ contains
     !ufsio
     call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'uvel')
     call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'vvel')
-
+    call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'coszen')
+    call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'scale_factor')
+    call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'swvdr')
+    call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'swvdf')
+    call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'swidr')
+    call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'swidf')
+    call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'strocnxT')
+    call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'strocnyT')
+    call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'stressp_1')
+    call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'stressp_2')
+    call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'stressp_3')
+    call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'stressp_4')
+    call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'stressm_1')
+    call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'stressm_2')
+    call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'stressm_3')
+    call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'stressm_4')
+    call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'stress12_1')
+    call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'stress12_2')
+    call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'stress12_3')
+    call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'stress12_4')
+    call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'iceumask')
+    call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'fsnow')
     call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'aicen', &
          ungridded_lbound=1, ungridded_ubound=ncat)
     call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'vicen', &
          ungridded_lbound=1, ungridded_ubound=ncat)
     call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'vsnon', &
          ungridded_lbound=1, ungridded_ubound=ncat)
+    call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'Tsfcn', &
+         ungridded_lbound=1, ungridded_ubound=ncat)
+    call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'iage', &
+         ungridded_lbound=1, ungridded_ubound=ncat)
+    call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'alvl', &
+         ungridded_lbound=1, ungridded_ubound=ncat)
+    call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'vlvl', &
+         ungridded_lbound=1, ungridded_ubound=ncat)
+    call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'apnd', &
+         ungridded_lbound=1, ungridded_ubound=ncat)
+    call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'hpnd', &
+         ungridded_lbound=1, ungridded_ubound=ncat)
+    call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'ipnd', &
+         ungridded_lbound=1, ungridded_ubound=ncat)
+    call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'dhs', &
+         ungridded_lbound=1, ungridded_ubound=ncat)
+    call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'ffrac', &
+         ungridded_lbound=1, ungridded_ubound=ncat)
+
+    do k=1,nilyr
+       write(nchar,'(i3.3)') k
+       call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'sice'//trim(nchar), &
+                        ungridded_lbound=1, ungridded_ubound=ncat)
+       call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'qice'//trim(nchar), &
+                        ungridded_lbound=1, ungridded_ubound=ncat)
+    enddo
+
+    do k=1,nslyr
+       write(nchar,'(i3.3)') k
+       call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'qsno'//trim(nchar), &
+                        ungridded_lbound=1, ungridded_ubound=ncat)
+    enddo
 
     do n = 1,fldsFrIce_num
        call NUOPC_Advertise(exportState, standardName=fldsFrIce(n)%stdname, &
@@ -967,6 +1028,14 @@ contains
     real    (kind=dbl_kind), pointer :: dataptr_ifrac_n(:,:)
     real    (kind=dbl_kind), pointer :: dataptr_swpen_n(:,:)
     logical (kind=log_kind), save :: first_call = .true.
+    character (len=3)       :: nchar
+    integer (kind=int_kind) :: nt_Tsfc, nt_sice, nt_qice, nt_qsno
+    integer (kind=int_kind) :: nt_iage, nt_alvl, nt_vlvl
+    integer (kind=int_kind) :: nt_apnd, nt_hpnd, nt_ipnd
+    logical (kind=log_kind) :: &
+          tr_iage, tr_FY, tr_lvl, tr_snow, &
+          tr_pond_lvl, tr_pond_topo, tr_brine, tr_iso, tr_aero
+    real (kind=dbl_kind)    :: work1(nx_block,ny_block,max_blocks)
     character(len=*),parameter :: subname = 'ice_export'
     !-----------------------------------------------------
 
@@ -1391,7 +1460,17 @@ contains
     end if
 
 
-    ! ufsio
+    ! ufsio restart
+    call icepack_query_tracer_flags(tr_iage_out=tr_iage, tr_FY_out=tr_FY, &
+         tr_lvl_out=tr_lvl, tr_pond_lvl_out=tr_pond_lvl, &
+         tr_pond_topo_out=tr_pond_topo, tr_brine_out=tr_brine, tr_aero_out=tr_aero, &
+         tr_iso_out=tr_iso, tr_fsd_out=tr_fsd, tr_snow_out=tr_snow)
+
+    call icepack_query_tracer_indices(nt_Tsfc_out=nt_Tsfc, nt_sice_out=nt_sice, &
+         nt_qice_out=nt_qice, nt_qsno_out=nt_qsno, nt_iage_out=nt_iage, &
+         nt_alvl_out=nt_alvl, nt_vlvl_out=nt_vlvl, &
+         nt_apnd_out=nt_apnd, nt_hpnd_out=nt_hpnd, nt_ipnd_out=nt_ipnd)
+
     if ( State_FldChk(exportState, 'uvel')) then
        call state_setexport_grid(exportState, 'uvel', input=uvel, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -1400,6 +1479,105 @@ contains
        call state_setexport_grid(exportState, 'vvel', input=vvel, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
     end if
+    if ( State_FldChk(exportState, 'coszen')) then
+       call state_setexport_grid(exportState, 'coszen', input=coszen, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
+    if ( State_FldChk(exportState, 'scale_factor')) then
+       call state_setexport_grid(exportState, 'scale_factor', input=scale_factor, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
+    if ( State_FldChk(exportState, 'swvdr')) then
+       call state_setexport_grid(exportState, 'swvdr', input=swvdr, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
+    if ( State_FldChk(exportState, 'swvdf')) then
+       call state_setexport_grid(exportState, 'swvdf', input=swvdf, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
+    if ( State_FldChk(exportState, 'swidr')) then
+       call state_setexport_grid(exportState, 'swidr', input=swidr, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
+    if ( State_FldChk(exportState, 'swidf')) then
+       call state_setexport_grid(exportState, 'swidf', input=swidf, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
+    if ( State_FldChk(exportState, 'strocnxT')) then
+       call state_setexport_grid(exportState, 'strocnxT', input=strocnxT_iavg, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
+    if ( State_FldChk(exportState, 'strocnyT')) then
+       call state_setexport_grid(exportState, 'strocnyT', input=strocnyT_iavg, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
+
+    if ( State_FldChk(exportState, 'stressp_1')) then
+       call state_setexport_grid(exportState, 'stressp_1', input=stressp_1, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
+    if ( State_FldChk(exportState, 'stressp_2')) then
+       call state_setexport_grid(exportState, 'stressp_2', input=stressp_2, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
+    if ( State_FldChk(exportState, 'stressp_3')) then
+       call state_setexport_grid(exportState, 'stressp_3', input=stressp_3, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
+    if ( State_FldChk(exportState, 'stressp_4')) then
+       call state_setexport_grid(exportState, 'stressp_4', input=stressp_4, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
+    if ( State_FldChk(exportState, 'stressm_1')) then
+       call state_setexport_grid(exportState, 'stressm_1', input=stressm_1, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
+    if ( State_FldChk(exportState, 'stressm_2')) then
+       call state_setexport_grid(exportState, 'stressm_2', input=stressm_2, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
+    if ( State_FldChk(exportState, 'stressm_3')) then
+       call state_setexport_grid(exportState, 'stressm_3', input=stressm_3, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
+    if ( State_FldChk(exportState, 'stressm_4')) then
+       call state_setexport_grid(exportState, 'stressm_4', input=stressm_4, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
+
+    if ( State_FldChk(exportState, 'stress12_1')) then
+       call state_setexport_grid(exportState, 'stress12_1', input=stress12_1, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
+    if ( State_FldChk(exportState, 'stress12_2')) then
+       call state_setexport_grid(exportState, 'stress12_2', input=stress12_2, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
+    if ( State_FldChk(exportState, 'stress12_3')) then
+       call state_setexport_grid(exportState, 'stress12_3', input=stress12_3, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
+    if ( State_FldChk(exportState, 'stress12_4')) then
+       call state_setexport_grid(exportState, 'stress12_4', input=stress12_4, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
+
+    if (kdyn > 0) then
+       if ( State_FldChk(exportState, 'iceumask')) then
+          !$OMP PARALLEL DO PRIVATE(iblk,i,j)
+          do iblk = 1, nblocks
+             do j = 1, ny_block
+             do i = 1, nx_block
+                work1(i,j,iblk) = c0
+                if (iceUmask(i,j,iblk)) work1(i,j,iblk) = c1
+             enddo
+             enddo
+          enddo
+          !$OMP END PARALLEL DO
+          call state_setexport_grid(exportState, 'iceumask', input=work1, rc=rc)
+       end if
+    end if
+
     if ( State_FldChk(exportState, 'aicen')) then
        do n = 1,ncat
           call state_setexport_grid(exportState, 'aicen', input=aicen, index=n, ungridded_index=n, rc=rc)
@@ -1417,6 +1595,99 @@ contains
           call state_setexport_grid(exportState, 'vsnon', input=vsnon, index=n, ungridded_index=n, rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
        end do
+    end if
+    if ( State_FldChk(exportState, 'Tsfcn')) then
+       do n = 1,ncat
+          call state_setexport_grid(exportState, 'Tsfcn', input=trcrn(:,:,nt_Tsfc,:,:), index=n, ungridded_index=n, rc=rc)
+          if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       end do
+    end if
+
+    do k=1,nilyr
+       write(nchar,'(i3.3)') k
+       if ( State_FldChk(exportState, 'sice'//trim(nchar))) then
+          do n = 1,ncat
+             call state_setexport_grid(exportState, 'sice'//trim(nchar), input=trcrn(:,:,nt_sice+k-1,:,:), index=n, ungridded_index=n, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          end do
+       end if
+       if ( State_FldChk(exportState, 'qice'//trim(nchar))) then
+          do n = 1,ncat
+             call state_setexport_grid(exportState, 'qice'//trim(nchar), input=trcrn(:,:,nt_qice+k-1,:,:), index=n, ungridded_index=n, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          end do
+       end if
+    enddo
+
+    do k=1,nslyr
+       write(nchar,'(i3.3)') k
+       if ( State_FldChk(exportState, 'qsno'//trim(nchar))) then
+          do n = 1,ncat
+             call state_setexport_grid(exportState, 'qsno'//trim(nchar), input=trcrn(:,:,nt_qsno+k-1,:,:), index=n, ungridded_index=n, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          end do
+       end if
+    enddo
+
+    if (tr_iage) then
+       if ( State_FldChk(exportState, 'iage')) then
+          do n = 1,ncat
+             call state_setexport_grid(exportState, 'iage', input=trcrn(:,:,nt_iage,:,:), index=n, ungridded_index=n, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          end do
+       end if
+    end if
+
+    if (tr_lvl) then
+       if ( State_FldChk(exportState, 'alvl')) then
+          do n = 1,ncat
+             call state_setexport_grid(exportState, 'alvl', input=trcrn(:,:,nt_alvl,:,:), index=n, ungridded_index=n, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          end do
+       end if
+       if ( State_FldChk(exportState, 'vlvl')) then
+          do n = 1,ncat
+             call state_setexport_grid(exportState, 'vlvl', input=trcrn(:,:,nt_vlvl,:,:), index=n, ungridded_index=n, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          end do
+       end if
+    end if
+
+    if (tr_pond_lvl) then
+       if ( State_FldChk(exportState, 'apnd')) then
+          do n = 1,ncat
+             call state_setexport_grid(exportState, 'apnd', input=trcrn(:,:,nt_apnd,:,:), index=n, ungridded_index=n, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          end do
+       end if
+       if ( State_FldChk(exportState, 'hpnd')) then
+          do n = 1,ncat
+             call state_setexport_grid(exportState, 'hpnd', input=trcrn(:,:,nt_hpnd,:,:), index=n, ungridded_index=n, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          end do
+       end if
+       if ( State_FldChk(exportState, 'ipnd')) then
+          do n = 1,ncat
+             call state_setexport_grid(exportState, 'ipnd', input=trcrn(:,:,nt_ipnd,:,:), index=n, ungridded_index=n, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          end do
+       end if
+       if ( State_FldChk(exportState, 'fsnow')) then
+          call state_setexport_grid(exportState, 'fsnow', input=fsnow(:,:,:), rc=rc)
+          if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       end if
+       if ( State_FldChk(exportState, 'dhs')) then
+          do n = 1,ncat
+             call state_setexport_grid(exportState, 'dhs', input=dhsn(:,:,:,:), index=n, ungridded_index=n, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          end do
+       end if
+       if ( State_FldChk(exportState, 'ffrac')) then
+          do n = 1,ncat
+             call state_setexport_grid(exportState, 'ffrac', input=ffracn(:,:,:,:), index=n, ungridded_index=n, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          end do
+       end if
     end if
 
   end subroutine ice_export
@@ -2130,7 +2401,7 @@ contains
                    if (present(ungridded_index)) then
                       dataPtr3d(i1,j1,ungridded_index) = input(i,j,iblk)
                    else
-                      dataPtr2d(1,j1) = input(i,j,iblk)
+                      dataPtr2d(i1,j1) = input(i,j,iblk)
                    end if
                 end if
              else
