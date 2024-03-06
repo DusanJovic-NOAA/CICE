@@ -57,6 +57,8 @@ module ice_import_export
   use ice_state          , only : vicen, vsnon, aicen
   use ice_state          , only : uvel, vvel
 
+  use ice_calendar, only: msec, mmonth, mday, myear, istep1
+
   implicit none
   public
 
@@ -114,6 +116,8 @@ module ice_import_export
   type (fld_list_type)     :: fldsToIce(fldsMax)
   type (fld_list_type)     :: fldsFrIce(fldsMax)
   type (fld_list_type)     :: fldsFrIce_grid(fldsMax)
+
+  integer, parameter       :: ufsio_metadata_maxlen = 4096
 
   integer     , parameter  :: io_dbug = 10        ! i/o debug messages
   character(*), parameter  :: u_FILE_u = &
@@ -317,7 +321,9 @@ contains
             ungridded_lbound=1, ungridded_ubound=3)
     end if
 
-    !ufsio
+    !ufsio - restart
+    call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'ufsio_metadata')
+
     call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'uvel')
     call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'vvel')
     call fldlist_add(fldsFrIce_grid_num , fldsFrIce_grid, 'coszen')
@@ -1036,6 +1042,14 @@ contains
           tr_iage, tr_FY, tr_lvl, tr_snow, &
           tr_pond_lvl, tr_pond_topo, tr_brine, tr_iso, tr_aero
     real (kind=dbl_kind)    :: work1(nx_block,ny_block,max_blocks)
+
+    integer(kind=int_kind) , pointer    :: fldptr_info(:,:)
+    type(ESMF_Field)                    :: ifield
+    integer                             :: ilen
+    character(len=:), allocatable       :: string_info
+    type(ESMF_Info)                     :: info
+    character(len=char_len_long)        :: filename
+
     character(len=*),parameter :: subname = 'ice_export'
     !-----------------------------------------------------
 
@@ -1690,6 +1704,56 @@ contains
        end if
     end if
 
+    if ( State_FldChk(exportState, 'ufsio_metadata')) then
+
+       info = ESMF_InfoCreate(rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+       write(filename,'(a,a,a,i4.4,a,i2.2,a,i2.2,a,i5.5)') &
+              'RESTART/', &
+              'ufsio_iced','.', &
+              myear,'-',mmonth,'-',mday,'-',msec
+
+       call ESMF_InfoSet(info, "/ufsio/filename", trim(filename)//'.nc', rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+       call ESMF_InfoSet(info, "/ufsio/dimensions/ni", nx_global, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       call ESMF_InfoSet(info, "/ufsio/dimensions/nj", ny_global, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       call ESMF_InfoSet(info, "/ufsio/dimensions/ncat", ncat, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+       call ESMF_InfoSet(info, "/ufsio/global_attributes/istep1", istep1, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       call ESMF_InfoSet(info, "/ufsio/global_attributes/myear", myear, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       call ESMF_InfoSet(info, "/ufsio/global_attributes/mmonth", mmonth, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       call ESMF_InfoSet(info, "/ufsio/global_attributes/mday", mday, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       call ESMF_InfoSet(info, "/ufsio/global_attributes/msec", msec, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+       call ESMF_StateGet(exportState, itemName='ufsio_metadata', field=ifield, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+       call ESMF_FieldGet(ifield, farrayPtr=fldptr_info, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+       fldptr_info = 0
+       string_info = ESMF_InfoDump(info, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+       ilen = len(trim(string_info)) / 4
+       if (ilen * 4 < len(trim(string_info))) ilen = ilen + 1
+       if (ilen > ufsio_metadata_maxlen) call abort_ice(error_message=subname// &
+          ' ERROR: ilen > ufsio_metadata_maxlen', file=u_FILE_u, line=__LINE__)
+
+       fldptr_info(1,1:ilen) = transfer(trim(string_info), fldptr_info, ilen)
+
+    end if
+
   end subroutine ice_export
 
   !===============================================================================
@@ -1725,7 +1789,7 @@ contains
   subroutine fldlist_realize(state, fldList, numflds, flds_scalar_name, flds_scalar_num, mesh, grid, tag, rc)
 
     use NUOPC, only : NUOPC_IsConnected, NUOPC_Realize
-    use ESMF , only : ESMF_MeshLoc_Element, ESMF_FieldCreate, ESMF_TYPEKIND_R8
+    use ESMF , only : ESMF_MeshLoc_Element, ESMF_FieldCreate, ESMF_TYPEKIND_R8, ESMF_TYPEKIND_I4
     use ESMF , only : ESMF_MAXSTR, ESMF_Field, ESMF_State, ESMF_Mesh, ESMF_StateRemove
     use ESMF , only : ESMF_LogFoundError, ESMF_LOGMSG_INFO, ESMF_SUCCESS
     use ESMF , only : ESMF_LogWrite, ESMF_LOGMSG_ERROR, ESMF_LOGERR_PASSTHRU
@@ -1744,6 +1808,8 @@ contains
 
     ! local variables
     integer                :: n
+    type(ESMF_Distgrid)    :: distgrid1
+    type(ESMF_Grid)        :: grid1
     type(ESMF_Field)       :: field
     character(len=80)      :: stdname
     character(ESMF_MAXSTR) :: msg
@@ -1760,6 +1826,17 @@ contains
                   ESMF_LOGMSG_INFO)
              ! Create the scalar field
              call SetScalarField(field, flds_scalar_name, flds_scalar_num, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          else if (stdname == "ufsio_metadata") then
+             ! create a DistGrid with a single index space element, which gets mapped onto DE 0.
+             distgrid1 = ESMF_DistGridCreate(minIndex=(/1/), maxIndex=(/1/), rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+             grid1 = ESMF_GridCreate(distgrid1, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+             field = ESMF_FieldCreate(name="ufsio_metadata", grid=grid1, typekind=ESMF_TYPEKIND_I4, &
+                  ungriddedLBound=(/1/), ungriddedUBound=(/ufsio_metadata_maxlen/), rc=rc)
              if (ChkErr(rc,__LINE__,u_FILE_u)) return
           else
              if (present(mesh)) then

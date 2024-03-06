@@ -11,6 +11,7 @@ module ice_shr_methods
   use ESMF         , only : ESMF_GeomType_Flag, ESMF_FieldStatus_Flag
   use ESMF         , only : ESMF_Mesh, ESMF_MeshGet
   use ESMF         , only : ESMF_GEOMTYPE_MESH, ESMF_GEOMTYPE_GRID, ESMF_FIELDSTATUS_COMPLETE
+  use ESMF         , only : ESMF_StateItem_Flag, ESMF_STATEITEM_FIELD
   use ESMF         , only : ESMF_Clock, ESMF_ClockCreate, ESMF_ClockGet, ESMF_ClockSet
   use ESMF         , only : ESMF_ClockPrint, ESMF_ClockAdvance
   use ESMF         , only : ESMF_Alarm, ESMF_AlarmCreate, ESMF_AlarmGet, ESMF_AlarmSet
@@ -314,6 +315,7 @@ contains
 
     ! local variables
     integer                             :: i,j,n
+    type(ESMF_StateItem_Flag)           :: itemType
     type(ESMF_Field)                    :: lfield
     integer                             :: fieldCount
     integer                             :: lrank
@@ -334,6 +336,12 @@ contains
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
     do n = 1, fieldCount
+       call ESMF_StateGet(State, itemName=trim(lfieldnamelist(n)), itemType=itemType, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+       if (trim(lfieldnamelist(n)) == 'ufsio_metadata') cycle
+       if (itemType /= ESMF_STATEITEM_FIELD) cycle
+
        call ESMF_StateGet(State, itemName=trim(lfieldnamelist(n)), field=lfield, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
